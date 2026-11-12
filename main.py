@@ -1,23 +1,409 @@
-from bakery import assert_equal
 from drafter import *
 from dataclasses import dataclass
 
-
-
+set_website_title("Game Matchmaker")
+set_site_information(
+    author="Grace Colvin",
+    description="Take a short quiz and recive a game recommendation from my personal library.",
+    sources="Thanks to the Drafter docs and Claude.",
+    planning=["plan.pdf", "design.pdf"],
+    links=[]
+)
 hide_debug_information()
-set_website_title("Your Drafter Website")
 set_website_framed(False)
+
+# ---------------------------------------------------------------
+# DATACLASSES
+# ---------------------------------------------------------------
+@dataclass
+class Game:
+    title: str
+    genre: str
+    platform: str
+    difficulty: int      # 1 = Easy, 2 = Medium, 3 = Hard
+    multiplayer: bool
+    length: str
+    description: str
+    notes: str           # your personal notes as the developer
+
+
+@dataclass
+class Preferences:
+    genre: str
+    platform: str
+    difficulty: int
+    multiplayer: bool
 
 
 @dataclass
 class State:
-    pass
+    username: str
+    games: list[Game]
+    preferences: Preferences
+    recommendations: list[Game]   # history of every game recommended (newest last)
+    favorites: list[Game]
+    selected_game: Game
+
+
+# ---------------------------------------------------------------
+# GAME LIBRARY (replace with your own favorite games!)
+# ---------------------------------------------------------------
+GAMES = [
+    Game("The Legend of Zelda: Breath of the Wild", "adventure", "Switch", 2, False,
+         "50+ hours", "Explore a huge open world and solve puzzles.",
+         "My all-time favorite. The freedom to explore is unmatched."),
+    Game("Hades", "action", "PC", 3, False,
+         "20-30 hours", "A fast-paced roguelike where you escape the underworld.",
+         "Great story that unfolds with every run."),
+    Game("Stardew Valley", "simulation", "PC", 1, True,
+         "50+ hours", "Run a farm, make friends, and relax.",
+         "Perfect cozy game. Even better with a friend."),
+    Game("Mario Kart 8 Deluxe", "racing", "Switch", 1, True,
+         "Endless", "Race against friends with wild items.",
+         "Best party game for game nights."),
+    Game("Elden Ring", "action", "PlayStation", 3, True,
+         "60+ hours", "A brutal open-world action RPG.",
+         "Challenging but so rewarding when you win."),
+    Game("Halo Infinite", "shooter", "Xbox", 2, True,
+         "15 hours (campaign)", "A sci-fi shooter with a great multiplayer mode.",
+         "The grappling hook makes combat so fun."),
+    Game("Minecraft", "sandbox", "PC", 1, True,
+         "Endless", "Build, mine, and survive in a blocky world.",
+         "Perfect for creativity. Play it solo or with friends."),
+]
+
+VALID_GENRES = ["action", "adventure", "simulation", "racing", "shooter", "sandbox"]
+VALID_PLATFORMS = ["PC", "PlayStation", "Xbox", "Switch"]
+DIFFICULTY_OPTIONS = ["1 - Easy", "2 - Medium", "3 - Hard"]
+
+
+# ---------------------------------------------------------------
+# HELPER FUNCTIONS
+# ---------------------------------------------------------------
+def difficulty_name(number: int) -> str:
+    """Turns 1/2/3 into a readable label."""
+    if number == 1:
+        return "Easy"
+    elif number == 2:
+        return "Medium"
+    return "Hard"
+
+
+def calculate_score(game: Game, prefs: Preferences) -> int:
+    """Adds one point for each preference the game matches."""
+    score = 0
+    if game.genre.lower() == prefs.genre.lower():
+        score += 1
+    if game.platform == prefs.platform:
+        score += 1
+    if game.difficulty == prefs.difficulty:
+        score += 1
+    if game.multiplayer == prefs.multiplayer:
+        score += 1
+    return score
+
+
+def game_buttons(games: list[Game]) -> list:
+    """Makes one 'see more info' button per game."""
+    buttons = []
+    for game in games:
+        buttons.append(Button(game.title, game_details_page,
+                              [Argument("title", game.title)]))
+        buttons.append(LineBreak())
+    return buttons
+
+
+# ---------------------------------------------------------------
+# ROUTES: HOME AND USERNAME
+# ---------------------------------------------------------------
+@route
+def index(state: State) -> Page:
+    return home_page(state)
 
 
 @route
-def index(state: State) -> Page:
-    return Page(state, ["Hello World!"])
+def home_page(state: State) -> Page:
+    greeting = "Welcome!"
+    if state.username != "":
+        greeting = f"Welcome back, {state.username}!"
+    return Page(state, [
+        Header("Game Matchmaker"),
+        greeting,
+        LineBreak(),
+        "Find your next favorite game! Take a short quiz about what you like, "
+        "and I'll recommend a game from my personal library of favorites.",
+        LineBreak(),
+        "Your name: ",
+        TextBox("username", state.username),
+        Button("Save Name", save_username),
+        LineBreak(),
+        Button("Start the Quiz", quiz_page),
+        Button("See All Games", game_library_page),
+        Button("My Favorites", favorites_page),
+        Button("Past Recommendations", history_page),
+        Button("Add a Game", add_game_page),
+    ])
 
-assert_equal(index(State()), Page(State(), ["Hello World!"]))
 
-start_server(State())
+@route
+def save_username(state: State, username: str) -> Page:
+    state.username = username.strip()
+    return home_page(state)
+
+
+@route
+def back_to_home(state: State) -> Page:
+    return home_page(state)
+
+
+# ---------------------------------------------------------------
+# ROUTES: QUIZ, HELP, RECOMMENDATIONS
+# ---------------------------------------------------------------
+@route
+def quiz_page(state: State, error: str = "") -> Page:
+    content = [Header("Find Your Game")]
+    if error != "":
+        content.append("ERROR: " + error)
+        content.append(LineBreak())
+    content += [
+        "Favorite genre: ",
+        TextBox("genre", ""),
+        LineBreak(),
+        "Platform: ",
+        SelectBox("platform", VALID_PLATFORMS, "PC"),
+        LineBreak(),
+        "Difficulty: ",
+        SelectBox("difficulty", DIFFICULTY_OPTIONS, "1 - Easy"),
+        LineBreak(),
+        "Style: ",
+        CheckBox("multiplayer", False),
+        " Multiplayer game",
+        LineBreak(),
+        Button("Submit", submit_quiz),
+        Button("Help (accepted answers)", help_page),
+    ]
+    return Page(state, content)
+
+
+@route
+def help_page(state: State) -> Page:
+    return Page(state, [
+        Header("Help: Accepted Answers"),
+        Header("Genre (type one of these):", 3),
+        ", ".join(VALID_GENRES),
+        Header("Platform (choose from the box):", 3),
+        ", ".join(VALID_PLATFORMS),
+        Header("Difficulty (choose from the box):", 3),
+        ", ".join(DIFFICULTY_OPTIONS),
+        Header("Style:", 3),
+        "Check the box if you want a multiplayer game, leave it unchecked for single-player.",
+        LineBreak(),
+        Button("Back to Quiz", quiz_page),
+        Button("Return Home", back_to_home),
+    ])
+
+
+@route
+def submit_quiz(state: State, genre: str, platform: str,
+                difficulty: str, multiplayer: bool) -> Page:
+    genre = genre.strip().lower()
+
+    # Error check: genre must be an available option
+    if genre not in VALID_GENRES:
+        return quiz_page(state, "Sorry, that genre isn't available. "
+                                "Please try a different answer (see Help for options).")
+
+    # SelectBox returns text like "2 - Medium", so grab the number
+    difficulty_number = int(difficulty[0])
+    state.preferences = Preferences(genre, platform, difficulty_number, multiplayer)
+
+    # Loop through every game and keep the one with the highest score
+    best_game = state.games[0]
+    best_score = -1
+    for game in state.games:
+        score = calculate_score(game, state.preferences)
+        if score > best_score:
+            best_score = score
+            best_game = game
+
+    state.recommendations.append(best_game)   # save to history
+    state.selected_game = best_game
+    return recommendations_page(state)
+
+
+@route
+def recommendations_page(state: State) -> Page:
+    game = state.recommendations[-1]          # most recent recommendation
+    score = calculate_score(game, state.preferences)
+    percent = int(score / 4 * 100)
+
+    favorite_label = "Add to Favorites"
+    if game in state.favorites:
+        favorite_label = "Remove from Favorites"
+
+    return Page(state, [
+        Header("Your Recommended Game"),
+        Header(game.title, 2),
+        f"Match: {percent}%",
+        LineBreak(),
+        game.description,
+        LineBreak(),
+        Button("More Game Info", game_details_page, [Argument("title", game.title)]),
+        Button(favorite_label, toggle_favorite, [Argument("title", game.title)]),
+        Button("Return Home", back_to_home),
+        Button("Try Quiz Again", quiz_page),
+    ])
+
+
+# ---------------------------------------------------------------
+# ROUTES: PAST RECOMMENDATIONS
+# ---------------------------------------------------------------
+@route
+def history_page(state: State) -> Page:
+    content = [Header("Past Recommendations")]
+    if len(state.recommendations) == 0:
+        content.append("No recommendations yet. Take the quiz to get one!")
+        content.append(LineBreak())
+    else:
+        content.append("Newest first. Click a game to see more information:")
+        content.append(LineBreak())
+        content += game_buttons(list(reversed(state.recommendations)))
+    content.append(Button("Take the Quiz", quiz_page))
+    content.append(Button("Return Home", back_to_home))
+    return Page(state, content)
+
+
+# ---------------------------------------------------------------
+# ROUTES: GAME LIBRARY, FILTER, DETAILS
+# ---------------------------------------------------------------
+@route
+def game_library_page(state: State) -> Page:
+    content = [
+        Header("Game Library"),
+        "Filter by genre: ",
+        SelectBox("genre_filter", ["all"] + VALID_GENRES, "all"),
+        Button("Filter", filter_games),
+        LineBreak(),
+        "Click a game to see more information:",
+        LineBreak(),
+    ]
+    content += game_buttons(state.games)
+    content.append(Button("Return Home", back_to_home))
+    return Page(state, content)
+
+
+@route
+def filter_games(state: State, genre_filter: str) -> Page:
+    if genre_filter == "all":
+        shown = state.games
+    else:
+        shown = []
+        for game in state.games:
+            if game.genre == genre_filter:
+                shown.append(game)
+
+    content = [
+        Header(f"Game Library: {genre_filter}"),
+        "Click a game to see more information:",
+        LineBreak(),
+    ]
+    content += game_buttons(shown)
+    content.append(Button("Back to Full Library", game_library_page))
+    content.append(Button("Return Home", back_to_home))
+    return Page(state, content)
+
+
+@route
+def game_details_page(state: State, title: str) -> Page:
+    # Find the game that was clicked and store it as the selected game
+    for game in state.games:
+        if game.title == title:
+            state.selected_game = game
+
+    game = state.selected_game
+    multiplayer_text = "Multiplayer" if game.multiplayer else "Single-player"
+
+    return Page(state, [
+        Header(game.title),
+        f"Genre: {game.genre}", LineBreak(),
+        f"Platform: {game.platform}", LineBreak(),
+        f"Difficulty: {difficulty_name(game.difficulty)}", LineBreak(),
+        f"Style: {multiplayer_text}", LineBreak(),
+        f"Length: {game.length}", LineBreak(),
+        f"Description: {game.description}", LineBreak(),
+        f"Developer's notes: {game.notes}", LineBreak(),
+        Button("Return Home", back_to_home),
+    ])
+
+
+# ---------------------------------------------------------------
+# ROUTES: FAVORITES
+# ---------------------------------------------------------------
+@route
+def toggle_favorite(state: State, title: str) -> Page:
+    for game in state.games:
+        if game.title == title:
+            if game in state.favorites:
+                state.favorites.remove(game)
+            else:
+                state.favorites.append(game)
+    return recommendations_page(state)
+
+
+@route
+def favorites_page(state: State) -> Page:
+    content = [Header("My Favorites")]
+    if len(state.favorites) == 0:
+        content.append("You haven't saved any favorites yet.")
+        content.append(LineBreak())
+    content += game_buttons(state.favorites)
+    content.append(Button("Return Home", back_to_home))
+    return Page(state, content)
+
+
+# ---------------------------------------------------------------
+# ROUTES: GAME SUBMISSION
+# ---------------------------------------------------------------
+@route
+def add_game_page(state: State, error: str = "") -> Page:
+    content = [Header("Add a Game")]
+    if error != "":
+        content += ["ERROR: " + error, LineBreak()]
+    content += [
+        "Title: ", TextBox("title", ""), LineBreak(),
+        "Genre: ", TextBox("genre", ""), LineBreak(),
+        "Platform: ", SelectBox("platform", VALID_PLATFORMS, "PC"), LineBreak(),
+        "Difficulty: ", SelectBox("difficulty", DIFFICULTY_OPTIONS, "1 - Easy"), LineBreak(),
+        "Multiplayer: ", CheckBox("multiplayer", False), LineBreak(),
+        "Length: ", TextBox("length", ""), LineBreak(),
+        "Description: ", TextBox("description", ""), LineBreak(),
+        "Notes: ", TextBox("notes", ""), LineBreak(),
+        Button("Add Game", submit_game),
+        Button("Return Home", back_to_home),
+    ]
+    return Page(state, content)
+
+
+@route
+def submit_game(state: State, title: str, genre: str, platform: str,
+                difficulty: str, multiplayer: bool, length: str,
+                description: str, notes: str) -> Page:
+    genre = genre.strip().lower()
+    title = title.strip()
+    if title == "":
+        return add_game_page(state, "Please enter a title.")
+    if genre not in VALID_GENRES:
+        return add_game_page(state, "That genre isn't available. Please try a different one.")
+    for game in state.games:
+        if game.title.lower() == title.lower():
+            return add_game_page(state, "That game is already in the library.")
+
+    state.games.append(Game(title, genre, platform, int(difficulty[0]),
+                            multiplayer, length, description, notes))
+    return game_library_page(state)
+
+
+# ---------------------------------------------------------------
+# START THE SITE
+# ---------------------------------------------------------------
+start_server(State("", list(GAMES), Preferences("", "PC", 1, False), [], [], GAMES[0]))
