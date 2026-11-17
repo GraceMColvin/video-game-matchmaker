@@ -2,13 +2,15 @@ from drafter import *
 from dataclasses import dataclass
 from bakery import assert_equal
 
+set_website_style("terminal")
+
 set_website_title("Game Matchmaker")
 set_site_information(
     author="Grace Colvin",
     description="Take a short quiz and recive a game recommendation from my personal library.",
-    sources="Thanks to the Drafter docs and Claude.",
-    planning=["plan.pdf", "design.pdf"],
-    links=[]
+    sources="Thanks to the Drafter docs, blockply textbook and Claude.",
+    planning=["CS1 Final Project 0 Brainstorm", "CS1 Final Project 1 Design.pdf"],
+    links=["https://gracemcolvin.github.io/video-game-matchmaker/"]
 )
 hide_debug_information()
 set_website_framed(False)
