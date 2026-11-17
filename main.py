@@ -4,6 +4,15 @@ from bakery import assert_equal
 
 set_website_style("terminal")
 
+set_website_style("terminal")
+
+add_website_css("""
+button {
+    padding: 10px 18px;
+    margin: 12px 0;
+}
+""")
+
 set_website_title("Game Matchmaker")
 set_site_information(
     author="Grace Colvin",
